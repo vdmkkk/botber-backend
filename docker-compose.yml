@@ -2,16 +2,18 @@ services:
   postgres:
     image: postgres:16-alpine
     container_name: app_postgres
+    env_file:
+      - ./app/backend/.env # 👈 add this
     environment:
-      POSTGRES_DB: ${PG_DB}
-      POSTGRES_USER: ${PG_USER}
-      POSTGRES_PASSWORD: ${PG_PASSWORD}
+      POSTGRES_DB: ${PG_DB:-app_db}
+      POSTGRES_USER: ${PG_USER:-app}
+      POSTGRES_PASSWORD: ${PG_PASSWORD:-app_pw}
     volumes:
       - pg_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${PG_USER} -d ${PG_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER:-app} -d ${PG_DB:-app_db}"]
       interval: 5s
       timeout: 3s
       retries: 20
@@ -39,7 +41,7 @@ services:
       redis:
         condition: service_healthy
     env_file:
-      - ./app/backend/.env.example # copy to .env for real usage
+      - ./app/backend/.env
     ports:
       - "${SERVICE_PORT:-8080}:${SERVICE_PORT:-8080}"
     command: >
