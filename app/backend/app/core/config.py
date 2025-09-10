@@ -1,0 +1,44 @@
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+    ENV: str = "dev"
+    SERVICE_PORT: int = 8080
+
+    ADMIN_API_KEY: str
+
+    PG_HOST: str
+    PG_PORT: int
+    PG_DB: str
+    PG_USER: str
+    PG_PASSWORD: str
+
+    REDIS_HOST: str
+    REDIS_PORT: int
+    REDIS_DB: int = 0
+
+    JWT_SECRET: str
+    JWT_ALG: str = "HS256"
+    JWT_REFRESH_MINUTES: int = 15
+    SESSION_TTL_DAYS: int = 30
+
+    SMTP_HOST: str
+    SMTP_PORT: int
+    SMTP_USER: str
+    SMTP_PASSWORD: str
+    SMTP_TLS: bool = True
+    MAIL_FROM: str
+
+    VERIFY_CODE_TTL_MINUTES: int = 10
+    VERIFY_RESEND_COOLDOWN_SECONDS: int = 60
+    PASSWORD_RESET_TTL_MINUTES: int = 15
+
+    FRONTEND_BASE_URL: str = "https://example.com"
+
+    LOGIN_ATTEMPT_WINDOW_SECONDS: int = 600
+    LOGIN_MAX_ATTEMPTS: int = 5
+    LOGIN_BLOCK_SECONDS: int = 900
+
+settings = Settings()
