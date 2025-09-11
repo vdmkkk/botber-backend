@@ -21,7 +21,7 @@ from app.services.email import send_email
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 @router.post("/register", response_model=Message)
-async def register(data: RegisterIn, db: AsyncSession = Depends(get_db), background: BackgroundTasks = Depends()):
+async def register(data: RegisterIn, db: AsyncSession = Depends(get_db), background: BackgroundTasks = None):
     # prevent duplicate accounts
     existing = await db.execute(select(User).where(User.email == data.email))
     if existing.scalar():
@@ -146,7 +146,7 @@ async def logout(
     return {"message": "Logged out"}
 
 @router.post("/forgot-password", response_model=Message)
-async def forgot_password(data: ForgotPasswordIn, db: AsyncSession = Depends(get_db), background: BackgroundTasks = Depends()):
+async def forgot_password(data: ForgotPasswordIn, db: AsyncSession = Depends(get_db), background: BackgroundTasks = None):
     res = await db.execute(select(User).where(User.email == data.email))
     user = res.scalar()
     if not user:
