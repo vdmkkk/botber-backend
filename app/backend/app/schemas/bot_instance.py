@@ -15,6 +15,7 @@ class InstanceOut(BaseModel):
     id: int
     user_id: int
     bot_id: int
+    instance_id: str 
     title: str
     config: dict
     status: InstanceStatus

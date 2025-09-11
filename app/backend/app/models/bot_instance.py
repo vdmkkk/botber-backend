@@ -10,6 +10,10 @@ class UserBotInstance(Base):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), index=True)
     bot_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("bots.id", ondelete="RESTRICT"), index=True)
+
+    # NEW
+    instance_id: Mapped[str] = mapped_column(String(100), nullable=False, unique=True, index=True)
+
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     config: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
     status: Mapped[InstanceStatus] = mapped_column(

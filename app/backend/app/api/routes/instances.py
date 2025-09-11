@@ -10,7 +10,7 @@ from app.models.bot import Bot
 from app.models.bot_instance import UserBotInstance
 from app.models.enums import InstanceStatus
 from app.schemas.bot_instance import InstanceCreate, InstanceUpdate, InstanceOut
-from app.services.external_hooks import notify_instance_created
+from app.services.external_hooks import create_remote_instance, notify_instance_created
 
 router = APIRouter(prefix="/instances", tags=["instances"])
 
@@ -32,9 +32,17 @@ async def create_instance(data: InstanceCreate, user=Depends(get_current_user), 
     if not bot:
         raise HTTPException(400, "Invalid bot")
 
+    # 1) Create remote instance to obtain instance_id (placeholder for now)
+    try:
+        remote_id = await create_remote_instance(activation_code=bot.activation_code, config=data.config or {})
+    except Exception as e:
+        raise HTTPException(502, f"Failed to create remote instance: {e}")
+
+    # 2) Persist locally
     inst = UserBotInstance(
         user_id=user.id,
         bot_id=bot.id,
+        instance_id=remote_id,  # NEW
         title=data.title,
         config=data.config or {},
         status=InstanceStatus.active,
@@ -44,8 +52,8 @@ async def create_instance(data: InstanceCreate, user=Depends(get_current_user), 
     await db.commit()
     await db.refresh(inst)
 
-    # fire-and-forget external notification
-    await notify_instance_created(inst.id, {"user_id": user.id, "bot_id": bot.id})
+    # 3) Notify external (optional)
+    await notify_instance_created(inst.id, {"user_id": user.id, "bot_id": bot.id, "remote_instance_id": remote_id})
     return inst
 
 @router.put("/{iid}", response_model=InstanceOut)
