@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     SMTP_TLS: bool = True
     MAIL_FROM: str
 
+    EMAIL_ENABLED: bool = True
+    SMTP_TIMEOUT_SECONDS: int = 10
+
     VERIFY_CODE_TTL_MINUTES: int = 10
     VERIFY_RESEND_COOLDOWN_SECONDS: int = 60
     PASSWORD_RESET_TTL_MINUTES: int = 15

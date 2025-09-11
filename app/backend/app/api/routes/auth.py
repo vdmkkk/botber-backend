@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status, Header, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Header, Request, BackgroundTasks
+
 from sqlalchemy import select, delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -57,11 +58,8 @@ async def register(data: RegisterIn, db: AsyncSession = Depends(get_db)):
         db.add(ver)
     await db.commit()
 
-    await send_email(
-        to_email=data.email,
-        subject="Your confirmation code",
-        body=f"Your code is: {code}. It expires in {settings.VERIFY_CODE_TTL_MINUTES} minutes.",
-    )
+    background.add_task(send_email, to_email=data.email, subject="Your confirmation code",
+                        body=f"Your code is: {code}. It expires in {settings.VERIFY_CODE_TTL_MINUTES} minutes.")
     return {"message": "Verification code sent"}
 
 @router.post("/verify-email", response_model=TokenPair)
@@ -163,11 +161,8 @@ async def forgot_password(data: ForgotPasswordIn, db: AsyncSession = Depends(get
     await db.commit()
 
     reset_url = f"{settings.FRONTEND_BASE_URL.rstrip('/')}/reset-password?token={token}"
-    await send_email(
-        to_email=user.email,
-        subject="Password reset",
-        body=f"Use this link to reset your password (valid {settings.PASSWORD_RESET_TTL_MINUTES} minutes): {reset_url}",
-    )
+    background.add_task(send_email, to_email=user.email, subject="Password reset",
+                        body=f"Use this link to reset your password (valid {settings.PASSWORD_RESET_TTL_MINUTES} minutes): {reset_url}")
     return {"message": "If the email exists, a reset link has been sent"}
 
 @router.post("/reset-password", response_model=Message)
