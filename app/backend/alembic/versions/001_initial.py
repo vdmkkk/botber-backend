@@ -82,7 +82,16 @@ def upgrade() -> None:
         sa.Column("bot_id", sa.BigInteger(), sa.ForeignKey("bots.id", ondelete="RESTRICT"), nullable=False),
         sa.Column("title", sa.String(length=200), nullable=False),
         sa.Column("config", postgresql.JSONB(astext_type=sa.Text()), nullable=False, server_default=sa.text("'{}'::jsonb")),
-        sa.Column("status", sa.Enum(name="instance_status", create_type=False), nullable=False, server_default="active"),
+        sa.Column(
+        "status",
+        postgresql.ENUM(
+            "active", "paused", "not_enough_balance",
+            name="instance_status",
+            create_type=False,
+        ),
+        nullable=False,
+        server_default="active",
+    ),
         sa.Column("last_charge_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("next_charge_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()")),
