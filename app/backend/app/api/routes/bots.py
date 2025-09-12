@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -6,6 +6,8 @@ from app.api.deps import require_admin
 from app.db.session import get_db
 from app.models.bot import Bot
 from app.schemas.bot import BotCreate, BotUpdate, BotOut
+from app.core.exceptions import raise_error
+from app.core.error_codes import ErrorCode
 
 router = APIRouter(prefix="/bots", tags=["bots"])
 
@@ -26,7 +28,7 @@ async def create_bot(data: BotCreate, db: AsyncSession = Depends(get_db)):
 async def update_bot(bot_id: int, data: BotUpdate, db: AsyncSession = Depends(get_db)):
     bot = await db.get(Bot, bot_id)
     if not bot:
-        raise HTTPException(404, "Not found")
+        raise_error(ErrorCode.BOT_NOT_FOUND, status.HTTP_404_NOT_FOUND, "Not found")
     for k, v in data.model_dump(exclude_none=True).items():
         setattr(bot, k, v)
     await db.commit()
@@ -37,7 +39,7 @@ async def update_bot(bot_id: int, data: BotUpdate, db: AsyncSession = Depends(ge
 async def delete_bot(bot_id: int, db: AsyncSession = Depends(get_db)):
     bot = await db.get(Bot, bot_id)
     if not bot:
-        raise HTTPException(404, "Not found")
+        raise_error(ErrorCode.BOT_NOT_FOUND, status.HTTP_404_NOT_FOUND, "Not found")
     await db.delete(bot)
     await db.commit()
     return {"message": "Deleted"}

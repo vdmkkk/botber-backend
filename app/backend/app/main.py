@@ -1,13 +1,104 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, status
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+
+from app.schemas.common import ErrorResponse
+from app.core.exceptions import AppException
+from app.core.error_codes import ErrorCode
 
 from app.api.routes import auth, bots, instances, admin, users
 from app.core.config import settings
 from app.db.session import AsyncSessionLocal
 
-app = FastAPI(title="Bots Shop API", version="0.1.0")
+app = FastAPI(title="BotBeri API", version="0.1.0")
+
+@app.exception_handler(AppException)
+async def app_exception_handler(request: Request, exc: AppException):
+    payload = exc.detail if isinstance(exc.detail, dict) else {}
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=ErrorResponse(
+            error_code=payload.get("error_code", ErrorCode.INTERNAL_ERROR),
+            user_message=payload.get("user_message"),
+            details=payload.get("details"),
+        ).model_dump(),
+    )
+
+@app.exception_handler(RequestValidationError)
+async def validation_handler(request: Request, exc: RequestValidationError):
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content=ErrorResponse(
+            error_code=ErrorCode.VALIDATION_ERROR,
+            user_message="Invalid request data",
+            details={"errors": exc.errors()},
+        ).model_dump(),
+    )
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    # Map plain HTTPExceptions (if any) into our envelope
+    code_map = {
+        401: ErrorCode.UNAUTHORIZED,
+        403: ErrorCode.FORBIDDEN,
+        404: ErrorCode.NOT_FOUND,
+        409: ErrorCode.CONFLICT,
+        429: ErrorCode.RATE_LIMITED,
+    }
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=ErrorResponse(
+            error_code=code_map.get(exc.status_code, ErrorCode.BAD_REQUEST),
+            user_message=str(exc.detail) if exc.detail else None,
+        ).model_dump(),
+    )
+
+@app.exception_handler(IntegrityError)
+async def integrity_error_handler(request: Request, exc: IntegrityError):
+    # Try to distinguish unique constraint violations
+    msg = str(exc.orig).lower() if exc.orig else ""
+    if "unique" in msg or "duplicate" in msg:
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content=ErrorResponse(
+                error_code=ErrorCode.UNIQUE_CONSTRAINT_VIOLATION,
+                user_message="Unique constraint violated",
+                details={"db_message": msg},
+            ).model_dump(),
+        )
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content=ErrorResponse(
+            error_code=ErrorCode.DATABASE_ERROR,
+            user_message="Database error",
+            details={"db_message": msg},
+        ).model_dump(),
+    )
+
+@app.exception_handler(SQLAlchemyError)
+async def sa_error_handler(request: Request, exc: SQLAlchemyError):
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content=ErrorResponse(
+            error_code=ErrorCode.DATABASE_ERROR,
+            user_message="Database error",
+        ).model_dump(),
+    )
+
+@app.exception_handler(Exception)
+async def unhandled_handler(request: Request, exc: Exception):
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content=ErrorResponse(
+            error_code=ErrorCode.INTERNAL_ERROR,
+            user_message="Internal server error",
+        ).model_dump(),
+    )
 
 app.add_middleware(
     CORSMiddleware,
