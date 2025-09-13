@@ -1,6 +1,6 @@
-import asyncio
+import uuid
 from typing import Optional
-from app.core.redis import get_redis  # reuse your existing redis connection factory
+from app.core.redis import redis_client  # <-- use your existing factory
 
 class RedisLock:
     def __init__(self, key: str, ttl_seconds: int):
@@ -9,20 +9,17 @@ class RedisLock:
         self._token: Optional[str] = None
 
     async def __aenter__(self):
-        import uuid
         self._token = uuid.uuid4().hex
-        r = await get_redis()
+        r = redis_client()  # <-- no await, returns redis.asyncio.Redis
         # SET key token NX EX ttl
         acquired = await r.set(self.key, self._token, nx=True, ex=self.ttl)
-        if not acquired:
-            return False
-        return True
+        return bool(acquired)
 
     async def __aexit__(self, exc_type, exc, tb):
-        if self._token is None:
+        if not self._token:
             return
-        r = await get_redis()
-        # Basic safe unlock: compare token then delete
+        r = redis_client()
+        # compare-and-delete
         lua = """
         if redis.call('GET', KEYS[1]) == ARGV[1] then
             return redis.call('DEL', KEYS[1])
