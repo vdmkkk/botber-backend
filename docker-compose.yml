@@ -40,9 +40,6 @@ services:
         condition: service_healthy
     env_file:
       - ./app/backend/.env # app config (DATABASE_URL, JWT, SMTP, etc.)
-    # Option A (recommended in prod): only expose to the internal network; Caddy will proxy to it
-    # ports: []   # comment this in to *not* expose 8080 publicly
-    # Option B (dev): keep local access to swagger on host:8080 as well
     ports:
       - "${SERVICE_PORT:-8080}:${SERVICE_PORT:-8080}"
     command: >
@@ -51,26 +48,5 @@ services:
       uvicorn app.main:app --host 0.0.0.0 --port ${SERVICE_PORT:-8080} --proxy-headers
       "
 
-  caddy:
-    image: caddy:2-alpine
-    container_name: app_caddy
-    depends_on:
-      api:
-        condition: service_started
-    ports:
-      - "80:80"
-      - "443:443"
-    environment:
-      # ACME email for Let's Encrypt
-      - CADDY_EMAIL=${CADDY_EMAIL:-admin@botberi.ru}
-      # Forward to the FastAPI service port
-      - SERVICE_PORT=${SERVICE_PORT:-8080}
-    volumes:
-      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-
 volumes:
   pg_data:
-  caddy_data:
-  caddy_config:
