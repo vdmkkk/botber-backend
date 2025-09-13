@@ -15,7 +15,36 @@ from app.api.routes import auth, bots, instances, admin, users
 from app.core.config import settings
 from app.db.session import AsyncSessionLocal
 
+import asyncio, contextlib
+from app.services.billing import process_due_instances
+
 app = FastAPI(title="BotBeri API", version="0.1.0")
+
+stop_billing = asyncio.Event()
+
+async def _billing_loop():
+    try:
+        while not stop_billing.is_set():
+            await process_due_instances()
+            try:
+                await asyncio.wait_for(stop_billing.wait(), timeout=settings.BILLING_TICK_SECONDS)
+            except asyncio.TimeoutError:
+                continue
+    except asyncio.CancelledError:
+        pass
+
+@app.on_event("startup")
+async def _start_billing():
+    app.state._billing_task = asyncio.create_task(_billing_loop())
+
+@app.on_event("shutdown")
+async def _stop_billing():
+    stop_billing.set()
+    task = getattr(app.state, "_billing_task", None)
+    if task:
+        task.cancel()
+        with contextlib.suppress(Exception):
+            await task
 
 @app.exception_handler(AppException)
 async def app_exception_handler(request: Request, exc: AppException):

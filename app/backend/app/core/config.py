@@ -53,4 +53,11 @@ class Settings(BaseSettings):
     HEALTH_POLL_INTERVAL_SECONDS: int = 3600                     # 60 min default
     HEALTH_CONCURRENCY: int = 10
 
+    BILLING_TICK_SECONDS: int = 300           # run every 5 minutes; processes due items
+    BILLING_LOCK_TTL_SECONDS: int = 240       # Redis lock TTL (shorter than tick)
+    BILLING_TIMEZONE: str = "UTC"             # optional: for aligning to next midnight etc.
+
+    # Which statuses are billable (external “active” only)
+    BILLABLE_STATUSES: tuple[str, ...] = ("active",)
+
 settings = Settings()
