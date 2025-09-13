@@ -26,11 +26,12 @@ from app.schemas.common import Message
 from app.services.email import send_email
 from app.core.exceptions import raise_error
 from app.core.error_codes import ErrorCode
+from app.schemas.openapi import ERROR_RESPONSES
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-@router.post("/register", response_model=Message)
+@router.post("/register", response_model=Message, responses=ERROR_RESPONSES)
 async def register(data: RegisterIn, db: AsyncSession = Depends(get_db), background: BackgroundTasks = None):
     # prevent duplicate accounts
     existing = await db.execute(select(User).where(User.email == data.email))
@@ -92,7 +93,7 @@ async def register(data: RegisterIn, db: AsyncSession = Depends(get_db), backgro
     return {"message": "Verification code sent"}
 
 
-@router.post("/verify-email", response_model=TokenPair)
+@router.post("/verify-email", response_model=TokenPair, responses=ERROR_RESPONSES)
 async def verify_email(data: VerifyEmailIn, db: AsyncSession = Depends(get_db)):
     res = await db.execute(select(EmailVerification).where(EmailVerification.email == data.email))
     ver = res.scalar()
@@ -124,7 +125,7 @@ async def verify_email(data: VerifyEmailIn, db: AsyncSession = Depends(get_db)):
     return TokenPair(session_token=session_token, refresh_token=refresh_token)
 
 
-@router.post("/login", response_model=TokenPair)
+@router.post("/login", response_model=TokenPair, responses=ERROR_RESPONSES)
 async def login(data: LoginIn, db: AsyncSession = Depends(get_db)):
     # Check block
     if await is_blocked(data.email):
@@ -154,7 +155,7 @@ async def login(data: LoginIn, db: AsyncSession = Depends(get_db)):
     return TokenPair(session_token=session_token, refresh_token=refresh_token)
 
 
-@router.post("/refresh", response_model=TokenPair)
+@router.post("/refresh", response_model=TokenPair, responses=ERROR_RESPONSES)
 async def refresh(
     db: AsyncSession = Depends(get_db),
     x_session_token: str | None = Header(default=None, alias="X-Session-Token"),
@@ -179,7 +180,7 @@ async def refresh(
     return TokenPair(session_token=x_session_token, refresh_token=new_refresh)
 
 
-@router.post("/logout", response_model=Message)
+@router.post("/logout", response_model=Message, responses=ERROR_RESPONSES)
 async def logout(
     x_session_token: str | None = Header(default=None, alias="X-Session-Token"),
 ):
@@ -189,7 +190,7 @@ async def logout(
     return {"message": "Logged out"}
 
 
-@router.post("/forgot-password", response_model=Message)
+@router.post("/forgot-password", response_model=Message, responses=ERROR_RESPONSES)
 async def forgot_password(data: ForgotPasswordIn, db: AsyncSession = Depends(get_db), background: BackgroundTasks = None):
     res = await db.execute(select(User).where(User.email == data.email))
     user = res.scalar()
@@ -220,7 +221,7 @@ async def forgot_password(data: ForgotPasswordIn, db: AsyncSession = Depends(get
     return {"message": "If the email exists, a reset link has been sent"}
 
 
-@router.post("/reset-password", response_model=Message)
+@router.post("/reset-password", response_model=Message, responses=ERROR_RESPONSES)
 async def reset_password(data: ResetPasswordIn, db: AsyncSession = Depends(get_db)):
     res = await db.execute(select(PasswordReset).where(PasswordReset.token == data.token))
     pr = res.scalar()
@@ -244,7 +245,7 @@ async def reset_password(data: ResetPasswordIn, db: AsyncSession = Depends(get_d
     return {"message": "Password updated"}
 
 
-@router.post("/change-password", response_model=TokenPair)
+@router.post("/change-password", response_model=TokenPair, responses=ERROR_RESPONSES)
 async def change_password(
     payload: ChangePasswordIn,
     db: AsyncSession = Depends(get_db),

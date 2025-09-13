@@ -8,10 +8,11 @@ from app.models.bot import Bot
 from app.schemas.bot import BotCreate, BotUpdate, BotOut
 from app.core.exceptions import raise_error
 from app.core.error_codes import ErrorCode
+from app.schemas.openapi import ERROR_RESPONSES
 
 router = APIRouter(prefix="/bots", tags=["bots"])
 
-@router.get("", response_model=list[BotOut])
+@router.get("", response_model=list[BotOut], responses=ERROR_RESPONSES)
 async def list_bots(db: AsyncSession = Depends(get_db)):
     res = await db.execute(select(Bot))
     return list(res.scalars())

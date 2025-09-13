@@ -5,14 +5,15 @@ from app.api.deps import get_current_user
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.user import UserOut, UserUpdate
+from app.schemas.openapi import ERROR_RESPONSES
 
 router = APIRouter(prefix="/users", tags=["users"])
 
-@router.get("/me", response_model=UserOut)
+@router.get("/me", response_model=UserOut, responses=ERROR_RESPONSES)
 async def get_me(current: User = Depends(get_current_user)):
     return current
 
-@router.patch("/me", response_model=UserOut)
+@router.patch("/me", response_model=UserOut, responses=ERROR_RESPONSES)
 async def update_me(
     payload: UserUpdate,
     current: User = Depends(get_current_user),

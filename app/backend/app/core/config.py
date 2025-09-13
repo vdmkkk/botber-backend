@@ -38,10 +38,19 @@ class Settings(BaseSettings):
     VERIFY_RESEND_COOLDOWN_SECONDS: int = 60
     PASSWORD_RESET_TTL_MINUTES: int = 15
 
-    FRONTEND_BASE_URL: str = "https://example.com"
+    FRONTEND_BASE_URL: str = "https://botberi.ru"
 
     LOGIN_ATTEMPT_WINDOW_SECONDS: int = 600
     LOGIN_MAX_ATTEMPTS: int = 5
     LOGIN_BLOCK_SECONDS: int = 900
+
+    EXTERNAL_API_BASE_URL: str = "https://dev.botberi.ru"         # instances API
+    EXTERNAL_API_TOKEN: str | None = None
+
+    KB_API_BASE_URL: str | None = "https://n8n.botberi.tech/webhook-test/ingest/rutube"  # knowledge API (can be same)
+    KB_API_TOKEN: str | None = None
+
+    HEALTH_POLL_INTERVAL_SECONDS: int = 3600                     # 60 min default
+    HEALTH_CONCURRENCY: int = 10
 
 settings = Settings()
