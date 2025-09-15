@@ -66,7 +66,6 @@ async def create_instance(data: InstanceCreate, user=Depends(get_current_user), 
 
     # 2) persist atomically; on DB failure, compensate by deleting remote instance
     try:
-        await db.begin()
         inst = UserBotInstance(
             user_id=user.id,
             bot_id=bot.id,
@@ -76,7 +75,6 @@ async def create_instance(data: InstanceCreate, user=Depends(get_current_user), 
             status=InstanceStatus.inactive,
             next_charge_at=datetime.now(timezone.utc) + timedelta(days=1),
         )
-        print(inst)
         db.add(inst)
         await db.flush()
         # create an empty KB mapped to this instance
