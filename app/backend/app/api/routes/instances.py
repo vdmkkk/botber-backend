@@ -73,14 +73,15 @@ async def create_instance(data: InstanceCreate, user=Depends(get_current_user), 
             instance_id=remote_id,
             title=data.title,
             config=data.config or {},
-            status=InstanceStatus.provisioning,
+            status=InstanceStatus.inactive,
             next_charge_at=datetime.now(timezone.utc) + timedelta(days=1),
         )
+        print(inst)
         db.add(inst)
         await db.flush()
         # create an empty KB mapped to this instance
         db.add(KnowledgeBase(instance_id=inst.id))
-        await _record_status_change(db, inst.id, None, InstanceStatus.provisioning.value)
+        await _record_status_change(db, inst.id, None, InstanceStatus.inactive.value)
         await db.commit()
         await db.refresh(inst)
         return inst
