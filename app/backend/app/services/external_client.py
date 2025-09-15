@@ -15,7 +15,7 @@ async def ext_create_instance(*, activation_code: str, vars: dict) -> str:
     print(payload)
     async with _client(settings.EXTERNAL_API_BASE_URL, settings.EXTERNAL_API_TOKEN) as c:
         r = await c.post("/instances", json=payload)
-        print(r.json())
+        print(r.json(), r.status_code)
         r.raise_for_status()
         return r.json()["instance_id"]
 
