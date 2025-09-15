@@ -4,6 +4,7 @@ from app.core.config import settings
 
 def _client(base: str, token: str | None) -> httpx.AsyncClient:
     headers = {"Accept": "application/json"}
+    print(base)
     if token:
         headers["Authorization"] = f"Bearer {token}"
     return httpx.AsyncClient(base_url=base.rstrip("/"), headers=headers, timeout=10)
@@ -11,8 +12,10 @@ def _client(base: str, token: str | None) -> httpx.AsyncClient:
 # ---------- Instances API ----------
 async def ext_create_instance(*, activation_code: str, vars: dict) -> str:
     payload = {"name": activation_code, "vars": vars or {}}
+    print(payload)
     async with _client(settings.EXTERNAL_API_BASE_URL, settings.EXTERNAL_API_TOKEN) as c:
         r = await c.post("/instances", json=payload)
+        print(r.json())
         r.raise_for_status()
         return r.json()["instance_id"]
 
