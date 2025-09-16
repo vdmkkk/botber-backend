@@ -120,7 +120,7 @@ async def update_instance(iid: int, data: InstanceUpdate, user=Depends(get_curre
 
     # now update local; if local commit fails, attempt to revert external to old vars
     try:
-        await db.begin()
+        # await db.begin()
         if data.title is not None:
             inst.title = data.title
         if data.config is not None:
