@@ -37,6 +37,11 @@ def _vars_from_config(cfg: dict | None) -> dict:
 async def _record_status_change(db: AsyncSession, inst_id: int, from_s: str | None, to_s: str):
     db.add(InstanceStatusEvent(instance_id=inst_id, from_status=from_s, to_status=to_s))
 
+@router.get("", response_model=list[InstanceOut], responses=ERROR_RESPONSES)
+async def list_instances(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    res = await db.execute(select(UserBotInstance).where(UserBotInstance.user_id == user.id))
+    return list(res.scalars())
+
 @router.get("/{iid}", response_model=InstanceDetailOut)
 async def get_instance(iid: int, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     # eager-load KB and its entries in one shot
@@ -68,13 +73,6 @@ async def get_instance(iid: int, user=Depends(get_current_user), db: AsyncSessio
         updated_at=inst.updated_at,
         kb=inst.knowledge_base,      # this matches KnowledgeBaseOut (from_attributes=True)
     )
-
-@router.get("/{iid}", response_model=InstanceOut, responses=ERROR_RESPONSES)
-async def get_instance(iid: int, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    inst = await db.get(UserBotInstance, iid)
-    if not inst or inst.user_id != user.id:
-        raise_error(ErrorCode.INSTANCE_NOT_FOUND, status.HTTP_404_NOT_FOUND, "Not found")
-    return inst
 
 @router.post("", response_model=InstanceOut, responses=ERROR_RESPONSES)
 async def create_instance(data: InstanceCreate, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
