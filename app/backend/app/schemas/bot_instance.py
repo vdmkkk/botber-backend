@@ -11,6 +11,9 @@ class InstanceUpdate(BaseModel):
     config: dict | None = None
     status: InstanceStatus | None = None
 
+class InstanceStatusUpdate(BaseModel):
+    status: InstanceStatus
+
 class InstanceOut(BaseModel):
     id: int
     user_id: int

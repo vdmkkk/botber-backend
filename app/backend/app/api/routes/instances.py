@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, status, Header
+from app.core.config import settings
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,7 +12,7 @@ from app.models.bot_instance import UserBotInstance
 from app.models.enums import InstanceStatus
 from app.models.instance_status_event import InstanceStatusEvent
 from app.models.knowledge import KnowledgeBase, KnowledgeEntry
-from app.schemas.bot_instance import InstanceCreate, InstanceUpdate, InstanceOut
+from app.schemas.bot_instance import InstanceCreate, InstanceUpdate, InstanceOut, InstanceStatusUpdate
 from app.schemas.knowledge import KBEntryCreate, KBEntryOut
 from app.services.external_client import (
     ext_create_instance, ext_patch_instance, ext_delete_instance,
@@ -21,6 +22,7 @@ from app.services.external_client import (
 from app.core.exceptions import raise_error
 from app.core.error_codes import ErrorCode
 from app.schemas.openapi import ERROR_RESPONSES
+from app.core.redis import get_session_user_id
 
 router = APIRouter(prefix="/instances", tags=["instances"])
 
@@ -182,80 +184,101 @@ async def delete_instance(iid: int, user=Depends(get_current_user), db: AsyncSes
             details={"error": str(exc)},
         )
 
-@router.patch("/{iid}/pause", response_model=InstanceOut, responses=ERROR_RESPONSES)
-async def pause_instance(iid: int, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+@router.patch("/{iid}/status", response_model=InstanceOut)
+async def set_instance_status(
+    iid: int,
+    payload: InstanceStatusUpdate,
+    db: AsyncSession = Depends(get_db),
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    x_session_token: str | None = Header(default=None, alias="X-Session-Token"),
+    x_refresh_token: str | None = Header(default=None, alias="X-Refresh-Token"),
+):
+    # ---- Auth: admin OR (session + refresh)
+    is_admin = False
+    if x_admin_token:
+        if x_admin_token != settings.ADMIN_TOKEN:
+            raise_error(ErrorCode.ADMIN_TOKEN_INVALID, status.HTTP_401_UNAUTHORIZED, "Admin token invalid")
+        is_admin = True
+    else:
+        # require both tokens present
+        if not x_session_token or not x_refresh_token:
+            raise_error(ErrorCode.TOKEN_MISSING, status.HTTP_401_UNAUTHORIZED, "Missing session/refresh token")
+        uid = await get_session_user_id(x_session_token)
+        if not uid:
+            raise_error(ErrorCode.SESSION_INVALID, status.HTTP_401_UNAUTHORIZED, "Invalid session")
+
+    # ---- Load instance
     inst = await db.get(UserBotInstance, iid)
-    if not inst or inst.user_id != user.id:
+    if not inst:
         raise_error(ErrorCode.INSTANCE_NOT_FOUND, status.HTTP_404_NOT_FOUND, "Not found")
 
-    try:
-        await ext_deactivate_instance(inst.instance_id)
-    except Exception as e:
-        raise_error(
-            ErrorCode.EXTERNAL_API_ERROR,
-            status.HTTP_502_BAD_GATEWAY,
-            user_message="Failed to deactivate remote instance",
-            details={"error": str(e)},
-        )
+    # Non-admin users must own the instance
+    if not is_admin:
+        # uid is set above
+        if inst.user_id != uid:
+            raise_error(ErrorCode.FORBIDDEN, status.HTTP_403_FORBIDDEN, "Forbidden")
 
-    prev = inst.status.value
+    desired = payload.status
+    # Accept "paused" but store as "inactive" to align with external API
+    external_target = desired
+    if desired == InstanceStatus.paused:
+        external_target = InstanceStatus.inactive
+
+    # ---- External action (only for active/inactive transitions)
+    # (other statuses are local-only state changes)
+    did_external = None
     try:
-        await db.begin()
-        inst.status = InstanceStatus.inactive
-        await _record_status_change(db, inst.id, prev, InstanceStatus.inactive.value)
-        await db.commit()
-        await db.refresh(inst)
-        return inst
-    except Exception as db_exc:
-        await db.rollback()
-        # compensate: re-activate remotely
-        try:
+        if external_target == InstanceStatus.active:
             await ext_activate_instance(inst.instance_id)
-        except Exception:
-            pass
-        raise_error(
-            ErrorCode.DATABASE_ERROR,
-            status.HTTP_500_INTERNAL_SERVER_ERROR,
-            user_message="Failed to save pause",
-            details={"error": str(db_exc)},
-        )
-
-@router.patch("/{iid}/resume", response_model=InstanceOut, responses=ERROR_RESPONSES)
-async def resume_instance(iid: int, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    inst = await db.get(UserBotInstance, iid)
-    if not inst or inst.user_id != user.id:
-        raise_error(ErrorCode.INSTANCE_NOT_FOUND, status.HTTP_404_NOT_FOUND, "Not found")
-
-    try:
-        await ext_activate_instance(inst.instance_id)
+            did_external = "activate"
+        elif external_target == InstanceStatus.inactive:
+            await ext_deactivate_instance(inst.instance_id)
+            did_external = "deactivate"
     except Exception as e:
         raise_error(
             ErrorCode.EXTERNAL_API_ERROR,
             status.HTTP_502_BAD_GATEWAY,
-            user_message="Failed to activate remote instance",
+            user_message="Failed to change remote status",
             details={"error": str(e)},
         )
 
-    prev = inst.status.value
+    # ---- Persist local change + event (atomic unit)
+    prev_status = inst.status
     try:
-        await db.begin()
-        inst.status = InstanceStatus.active
-        inst.next_charge_at = datetime.now(timezone.utc) + timedelta(days=1)
-        await _record_status_change(db, inst.id, prev, InstanceStatus.active.value)
+        # map paused -> inactive for storage
+        new_status = external_target
+        inst.status = new_status
+
+        # keep resume behavior: when becoming active, reset next charge window
+        if new_status == InstanceStatus.active:
+            inst.next_charge_at = datetime.now(timezone.utc) + timedelta(days=1)
+
+        db.add(
+            InstanceStatusEvent(
+                instance_id=inst.id,
+                from_status=prev_status.value if prev_status else None,
+                to_status=new_status.value,
+            )
+        )
+
         await db.commit()
         await db.refresh(inst)
         return inst
+
     except Exception as db_exc:
         await db.rollback()
-        # compensate: deactivate remotely
+        # compensate remote if we made an external call
         try:
-            await ext_deactivate_instance(inst.instance_id)
+            if did_external == "activate":
+                await ext_deactivate_instance(inst.instance_id)
+            elif did_external == "deactivate":
+                await ext_activate_instance(inst.instance_id)
         except Exception:
             pass
         raise_error(
             ErrorCode.DATABASE_ERROR,
             status.HTTP_500_INTERNAL_SERVER_ERROR,
-            user_message="Failed to save resume",
+            user_message="Failed to save status",
             details={"error": str(db_exc)},
         )
 
