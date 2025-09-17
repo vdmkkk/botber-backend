@@ -106,6 +106,7 @@ async def update_instance(iid: int, data: InstanceUpdate, user=Depends(get_curre
     old_config = dict(inst.config or {})
     new_config = {**old_config, **(data.config or {})} if data.config is not None else old_config
     vars_payload = _vars_from_config(new_config)
+    print(vars_payload)
 
     # call external first; if ext fails, do nothing locally
     try:

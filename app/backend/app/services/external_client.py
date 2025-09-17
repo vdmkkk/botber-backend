@@ -20,6 +20,7 @@ async def ext_patch_instance(instance_id: str, *, vars: dict) -> None:
     payload = {"vars": vars or {}}
     async with _client(settings.EXTERNAL_API_BASE_URL, settings.EXTERNAL_API_TOKEN) as c:
         r = await c.patch(f"/instances/{instance_id}", json=payload)
+        print(r.json())
         r.raise_for_status()
 
 async def ext_delete_instance(instance_id: str) -> None:
