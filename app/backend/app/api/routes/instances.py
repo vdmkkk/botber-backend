@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, status, Header
+from fastapi import APIRouter, Depends, status, Header, Query
 from app.core.config import settings
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,6 +13,8 @@ from app.models.enums import InstanceStatus
 from app.models.instance_status_event import InstanceStatusEvent
 from app.models.knowledge import KnowledgeBase, KnowledgeEntry
 from app.schemas.bot_instance import InstanceCreate, InstanceUpdate, InstanceOut, InstanceStatusUpdate, InstanceDetailOut
+from app.schemas.stats import StatusEventOut, StatusStatsOut
+from app.services.status_stats import compute_status_stats
 from app.schemas.knowledge import KBEntryCreate, KBEntryOut
 from app.services.external_client import (
     ext_create_instance, ext_patch_instance, ext_delete_instance,
@@ -392,3 +394,47 @@ async def kb_delete_entry_route(iid: int, entry_id: int, user=Depends(get_curren
             user_message="Failed to delete KB entry locally",
             details={"error": str(db_exc)},
         )
+
+@router.get("/{iid}/status-events", response_model=list[StatusEventOut])
+async def get_status_events(
+    iid: int,
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+    from_dt: datetime | None = Query(None, alias="from"),
+    to_dt: datetime | None = Query(None, alias="to"),
+):
+    inst = await db.get(UserBotInstance, iid)
+    if not inst or inst.user_id != user.id:
+        raise_error(ErrorCode.INSTANCE_NOT_FOUND, status.HTTP_404_NOT_FOUND, "Not found")
+
+    q = select(InstanceStatusEvent).where(InstanceStatusEvent.instance_id == iid)
+    if from_dt:
+        q = q.where(InstanceStatusEvent.changed_at >= from_dt)
+    if to_dt:
+        q = q.where(InstanceStatusEvent.changed_at <= to_dt)
+    q = q.order_by(InstanceStatusEvent.changed_at.desc()).offset(offset).limit(limit)
+
+    res = await db.execute(q)
+    return list(res.scalars())
+
+
+@router.get("/{iid}/stats", response_model=StatusStatsOut)
+async def get_instance_stats(
+    iid: int,
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    from_dt: datetime = Query(..., alias="from"),
+    to_dt: datetime = Query(..., alias="to"),
+    include_segments: bool = Query(False),
+):
+    if to_dt <= from_dt:
+        raise_error(ErrorCode.VALIDATION_ERROR, status.HTTP_422_UNPROCESSABLE_ENTITY, "Invalid time window")
+
+    inst = await db.get(UserBotInstance, iid)
+    if not inst or inst.user_id != user.id:
+        raise_error(ErrorCode.INSTANCE_NOT_FOUND, status.HTTP_404_NOT_FOUND, "Not found")
+
+    stats = await compute_status_stats(db, inst, from_dt, to_dt, include_segments=include_segments)
+    return StatusStatsOut(**stats)
