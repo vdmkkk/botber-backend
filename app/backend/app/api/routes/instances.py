@@ -12,7 +12,7 @@ from app.models.bot_instance import UserBotInstance
 from app.models.enums import InstanceStatus
 from app.models.instance_status_event import InstanceStatusEvent
 from app.models.knowledge import KnowledgeBase, KnowledgeEntry
-from app.schemas.bot_instance import InstanceCreate, InstanceUpdate, InstanceOut, InstanceStatusUpdate
+from app.schemas.bot_instance import InstanceCreate, InstanceUpdate, InstanceOut, InstanceStatusUpdate, InstanceDetailOut
 from app.schemas.knowledge import KBEntryCreate, KBEntryOut
 from app.services.external_client import (
     ext_create_instance, ext_patch_instance, ext_delete_instance,
@@ -23,6 +23,7 @@ from app.core.exceptions import raise_error
 from app.core.error_codes import ErrorCode
 from app.schemas.openapi import ERROR_RESPONSES
 from app.core.redis import get_session_user_id
+from sqlalchemy.orm import selectinload
 
 router = APIRouter(prefix="/instances", tags=["instances"])
 
@@ -36,10 +37,37 @@ def _vars_from_config(cfg: dict | None) -> dict:
 async def _record_status_change(db: AsyncSession, inst_id: int, from_s: str | None, to_s: str):
     db.add(InstanceStatusEvent(instance_id=inst_id, from_status=from_s, to_status=to_s))
 
-@router.get("", response_model=list[InstanceOut], responses=ERROR_RESPONSES)
-async def list_instances(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    res = await db.execute(select(UserBotInstance).where(UserBotInstance.user_id == user.id))
-    return list(res.scalars())
+@router.get("/{iid}", response_model=InstanceDetailOut)
+async def get_instance(iid: int, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    # eager-load KB and its entries in one shot
+    res = await db.execute(
+        select(UserBotInstance)
+        .options(
+            selectinload(UserBotInstance.knowledge_base).selectinload(KnowledgeBase.entries)
+        )
+        .where(UserBotInstance.id == iid)
+    )
+    inst = res.scalar_one_or_none()
+    if not inst or inst.user_id != user.id:
+        raise_error(ErrorCode.INSTANCE_NOT_FOUND, status.HTTP_404_NOT_FOUND, "Not found")
+
+    # The response model will serialize `inst` and include `kb` (knowledge_base renamed below)
+    # We rename relationship field to match schema: kb = inst.knowledge_base
+    # Easiest is to construct a dict:
+    return InstanceDetailOut(
+        id=inst.id,
+        user_id=inst.user_id,
+        bot_id=inst.bot_id,
+        instance_id=inst.instance_id,
+        title=inst.title,
+        config=inst.config,
+        status=inst.status,          # Pydantic will serialize Enum
+        last_charge_at=inst.last_charge_at,
+        next_charge_at=inst.next_charge_at,
+        created_at=inst.created_at,
+        updated_at=inst.updated_at,
+        kb=inst.knowledge_base,      # this matches KnowledgeBaseOut (from_attributes=True)
+    )
 
 @router.get("/{iid}", response_model=InstanceOut, responses=ERROR_RESPONSES)
 async def get_instance(iid: int, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):

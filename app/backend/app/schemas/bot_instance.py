@@ -1,5 +1,6 @@
 from pydantic import BaseModel
 from app.models.enums import InstanceStatus
+from app.schemas.knowledge import KnowledgeBaseOut
 
 class InstanceCreate(BaseModel):
     bot_id: int
@@ -25,3 +26,6 @@ class InstanceOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+class InstanceDetailOut(InstanceOut):
+    kb: KnowledgeBaseOut | None = None

@@ -8,6 +8,15 @@ class KnowledgeBase(Base):
     instance_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("user_bot_instances.id", ondelete="CASCADE"), unique=True, index=True)
     created_at: Mapped[str] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
 
+    instance = relationship("UserBotInstance", back_populates="knowledge_base", uselist=False)
+    entries = relationship(
+        "KnowledgeEntry",
+        back_populates="kb",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by="KnowledgeEntry.id",
+    )
+
 class KnowledgeEntry(Base):
     __tablename__ = "knowledge_entries"
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -17,3 +26,4 @@ class KnowledgeEntry(Base):
     created_at: Mapped[str] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
     updated_at: Mapped[str] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
     __table_args__ = (UniqueConstraint("kb_id", "external_entry_id", name="uq_kb_external_entry"),)
+    kb = relationship("KnowledgeBase", back_populates="entries")

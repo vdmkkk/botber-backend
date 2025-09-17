@@ -26,5 +26,13 @@ class UserBotInstance(Base):
     created_at: Mapped[str] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
     updated_at: Mapped[str] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
 
+    knowledge_base = relationship(
+        "KnowledgeBase",
+        back_populates="instance",
+        uselist=False,
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
     user = relationship("User")
     bot = relationship("Bot")
