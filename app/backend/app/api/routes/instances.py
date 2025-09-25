@@ -18,8 +18,7 @@ from app.services.status_stats import compute_status_stats
 from app.schemas.knowledge import KBEntryCreate, KBEntryOut
 from app.services.external_client import (
     ext_create_instance, ext_patch_instance, ext_delete_instance,
-    ext_activate_instance, ext_deactivate_instance, ext_health,
-    kb_create_entry, kb_delete_entry,
+    ext_activate_instance, ext_deactivate_instance,
 )
 from app.core.exceptions import raise_error
 from app.core.error_codes import ErrorCode
