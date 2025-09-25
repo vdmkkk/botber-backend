@@ -48,6 +48,11 @@ class Settings(BaseSettings):
     EXTERNAL_API_TOKEN: str | None = None
 
     KB_API_BASE_URL: str | None = "https://api.botberi.tech"  # knowledge API (can be same)
+
+    KB_POLL_INTERVAL_SECONDS: int = 30                  # poll every 30s
+    KB_POLL_TIMEOUT_SECONDS: int = 1800                 # stop after 30 min
+    KB_DEFAULT_DATA_TYPE: str = "document"              # "document" | "video"
+    KB_DEFAULT_LANG_HINT: str = "ru"
     KB_API_TOKEN: str | None = None
 
     HEALTH_POLL_INTERVAL_SECONDS: int = 3600                     # 60 min default

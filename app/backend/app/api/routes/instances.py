@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, status, Header, Query
+from fastapi import APIRouter, Depends, status, Header, Query, BackgroundTasks
 from app.core.config import settings
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,6 +26,14 @@ from app.core.error_codes import ErrorCode
 from app.schemas.openapi import ERROR_RESPONSES
 from app.core.redis import get_session_user_id
 from sqlalchemy.orm import selectinload
+
+from app.schemas.knowledge import KBEntryCreate, KBEntryOut
+from app.services.external_client import kb_ingest, kb_delete_by_ids
+from app.services.kb_watcher import watch_kb_execution
+from app.core.exceptions import raise_error
+from app.core.error_codes import ErrorCode
+from sqlalchemy import select
+from app.models.enums import KBDataType, KBLangHint, KBEntryStatus
 
 router = APIRouter(prefix="/instances", tags=["instances"])
 
@@ -312,13 +320,21 @@ async def set_instance_status(
 
 # ---------- Knowledge Base endpoints ----------
 
-@router.post("/{iid}/kb/entries", response_model=KBEntryOut, responses=ERROR_RESPONSES)
-async def kb_add_entry(iid: int, payload: KBEntryCreate, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+
+
+@router.post("/{iid}/kb/entries", response_model=KBEntryOut)
+async def kb_add_entry(
+    iid: int,
+    payload: KBEntryCreate,
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    background: BackgroundTasks | None = None,
+):
     inst = await db.get(UserBotInstance, iid)
     if not inst or inst.user_id != user.id:
         raise_error(ErrorCode.INSTANCE_NOT_FOUND, status.HTTP_404_NOT_FOUND, "Not found")
 
-    # find/create kb
+    # ensure KB row exists
     res = await db.execute(select(KnowledgeBase).where(KnowledgeBase.instance_id == iid))
     kb = res.scalar()
     if not kb:
@@ -326,39 +342,49 @@ async def kb_add_entry(iid: int, payload: KBEntryCreate, user=Depends(get_curren
         db.add(kb)
         await db.flush()
 
-    # call external first
+    data_type = (payload.data_type or KBDataType.document)
+    lang_hint = (payload.lang_hint or KBLangHint.ru)
+
+    # call external ingest (returns execution_id) – /kb/ingest per spec
     try:
-        ext_id = await kb_create_entry(instance_id=inst.instance_id, content=payload.content)
+        exec_id = await kb_ingest(
+            instance_id=inst.instance_id,
+            url=payload.content,
+            data_type=data_type.value,
+            lang_hint=lang_hint.value,
+        )
     except Exception as e:
         raise_error(
             ErrorCode.EXTERNAL_API_ERROR,
             status.HTTP_502_BAD_GATEWAY,
-            user_message="Failed to create KB entry remotely",
+            user_message="Failed to submit entry to KB",
             details={"error": str(e)},
         )
 
-    # persist local; compensate external on failure
-    try:
-        await db.begin()
-        entry = KnowledgeEntry(kb_id=kb.id, content=payload.content, external_entry_id=ext_id)
-        db.add(entry)
-        await db.commit()
-        await db.refresh(entry)
-        return entry
-    except Exception as db_exc:
-        await db.rollback()
-        try:
-            await kb_delete_entry(instance_id=inst.instance_id, entry_id=ext_id)
-        except Exception:
-            pass
-        raise_error(
-            ErrorCode.DATABASE_ERROR,
-            status.HTTP_500_INTERNAL_SERVER_ERROR,
-            user_message="Failed to save KB entry",
-            details={"error": str(db_exc)},
-        )
+    # create local entry as in_progress with execution_id
+    entry = KnowledgeEntry(
+        kb_id=kb.id,
+        content=payload.content,
+        data_type=data_type,
+        lang_hint=lang_hint,
+        execution_id=exec_id,
+        status=KBEntryStatus.in_progress,
+    )
+    db.add(entry)
+    await db.commit()
+    await db.refresh(entry)
 
-@router.delete("/{iid}/kb/entries/{entry_id}", responses=ERROR_RESPONSES)
+    # start watcher
+    if background is not None:
+        background.add_task(watch_kb_execution, entry.id)
+    else:
+        # fallback: still spawn a task
+        asyncio.create_task(watch_kb_execution(entry.id))
+
+    return entry
+
+
+@router.delete("/{iid}/kb/entries/{entry_id}")
 async def kb_delete_entry_route(iid: int, entry_id: int, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     inst = await db.get(UserBotInstance, iid)
     if not inst or inst.user_id != user.id:
@@ -368,32 +394,21 @@ async def kb_delete_entry_route(iid: int, entry_id: int, user=Depends(get_curren
     if not entry:
         raise_error(ErrorCode.NOT_FOUND, status.HTTP_404_NOT_FOUND, "Entry not found")
 
-    # external delete first; if ok, delete local
-    try:
-        if entry.external_entry_id:
-            await kb_delete_entry(instance_id=inst.instance_id, entry_id=entry.external_entry_id)
-    except Exception as e:
-        raise_error(
-            ErrorCode.EXTERNAL_API_ERROR,
-            status.HTTP_502_BAD_GATEWAY,
-            user_message="Failed to delete KB entry remotely",
-            details={"error": str(e)},
-        )
+    # If we already have external_entity_id, delete upstream first
+    if entry.external_entry_id:
+        try:
+            await kb_delete_by_ids(instance_id=inst.instance_id, entity_ids=[entry.external_entry_id])
+        except Exception as e:
+            raise_error(
+                ErrorCode.EXTERNAL_API_ERROR,
+                status.HTTP_502_BAD_GATEWAY,
+                user_message="Failed to delete KB entry remotely",
+                details={"error": str(e)},
+            )
 
-    try:
-        await db.begin()
-        await db.delete(entry)
-        await db.commit()
-        return {"message": "Deleted"}
-    except Exception as db_exc:
-        await db.rollback()
-        # best-effort: re-create remotely? we don't have content anymore; skip
-        raise_error(
-            ErrorCode.DATABASE_ERROR,
-            status.HTTP_500_INTERNAL_SERVER_ERROR,
-            user_message="Failed to delete KB entry locally",
-            details={"error": str(db_exc)},
-        )
+    await db.delete(entry)
+    await db.commit()
+    return {"message": "Deleted"}
 
 @router.get("/{iid}/status-events", response_model=list[StatusEventOut])
 async def get_status_events(

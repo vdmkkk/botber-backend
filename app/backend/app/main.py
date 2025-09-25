@@ -17,6 +17,7 @@ from app.db.session import AsyncSessionLocal
 
 import asyncio, contextlib
 from app.services.billing import process_due_instances
+from app.services.kb_watcher import rehydrate_pending_watchers
 
 app = FastAPI(title="BotBeri API", version="0.1.0")
 
@@ -144,6 +145,10 @@ app.include_router(admin.router)
 app.include_router(users.router)
 
 scheduler: AsyncIOScheduler | None = None
+
+@app.on_event("startup")
+async def _start_kb_watchers():
+    asyncio.create_task(rehydrate_pending_watchers())
 
 @app.on_event("startup")
 async def on_startup():
