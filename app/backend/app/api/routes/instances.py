@@ -325,9 +325,9 @@ async def set_instance_status(
 async def kb_add_entry(
     iid: int,
     payload: KBEntryCreate,
+    background: BackgroundTasks,
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-    background: BackgroundTasks | None = None,
 ):
     inst = await db.get(UserBotInstance, iid)
     if not inst or inst.user_id != user.id:
