@@ -102,14 +102,14 @@ async def create_instance(data: InstanceCreate, user=Depends(get_current_user), 
             instance_id=remote_id,
             title=data.title,
             config=data.config or {},
-            status=InstanceStatus.inactive,
+            status=InstanceStatus.active,
             next_charge_at=datetime.now(timezone.utc) + timedelta(days=1),
         )
         db.add(inst)
         await db.flush()
         # create an empty KB mapped to this instance
         db.add(KnowledgeBase(instance_id=inst.id))
-        await _record_status_change(db, inst.id, None, InstanceStatus.inactive.value)
+        await _record_status_change(db, inst.id, None, InstanceStatus.active.value)
         await db.commit()
         await db.refresh(inst)
         return inst
@@ -185,7 +185,7 @@ async def delete_instance(iid: int, user=Depends(get_current_user), db: AsyncSes
     old_title = inst.title
 
     try:
-        await db.begin()
+        # await db.begin()
         # local delete (not committed yet)
         await db.delete(inst)
         # external delete
