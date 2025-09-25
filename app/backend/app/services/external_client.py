@@ -1,5 +1,5 @@
 import httpx
-from typing import Any, Dict
+from typing import Any, Dict, Tuple
 from app.core.config import settings
 
 def _client(base: str, token: str | None) -> httpx.AsyncClient:
