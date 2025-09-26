@@ -54,6 +54,8 @@ services:
       dockerfile: Dockerfile
     container_name: app_celery_worker
     env_file: [./app/backend/.env]
+    environment:
+      - IN_CELERY=1
     depends_on:
       redis:
         condition: service_healthy
@@ -68,6 +70,8 @@ services:
       context: ./app/backend
     container_name: app_celery_beat
     env_file: [./app/backend/.env]
+    environment:
+      - IN_CELERY=1
     depends_on:
       - celery_worker
     command: celery -A app.celery_app beat -l info
