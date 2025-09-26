@@ -1,8 +1,7 @@
-import asyncio
 from celery import Celery
+from app.core.config import settings
 import sentry_sdk
 from sentry_sdk.integrations.celery import CeleryIntegration
-from app.core.config import settings
 
 if settings.SENTRY_DSN:
     sentry_sdk.init(
@@ -17,6 +16,11 @@ celery_app = Celery(
     "app",
     broker=settings.CELERY_BROKER_URL,
     backend=settings.CELERY_RESULT_BACKEND,
+    include=[
+        "app.tasks.billing",
+        "app.tasks.health",
+        "app.tasks.kb",
+    ],
 )
 
 celery_app.conf.update(
@@ -29,18 +33,25 @@ celery_app.conf.update(
     accept_content=["json"],
 )
 
-# Beat schedule (periodic tasks)
+# Route families to named queues (optional but nice)
+celery_app.conf.task_routes = {
+    "app.tasks.health.*":  {"queue": "health"},
+    "app.tasks.kb.*":      {"queue": "kb"},
+    "app.tasks.billing.*": {"queue": "billing"},
+}
+
+# Beat schedule unchanged
 celery_app.conf.beat_schedule = {
     "billing-tick": {
         "task": "app.tasks.billing.process_due",
-        "schedule": 300.0,  # 5 min
+        "schedule": 300.0,
     },
     "health-scan": {
         "task": "app.tasks.health.scan_and_dispatch",
-        "schedule": 3600.0,  # 60 min
+        "schedule": 3600.0,
     },
     "kb-scan": {
         "task": "app.tasks.kb.scan_and_dispatch",
-        "schedule": 30.0,    # 30 sec
+        "schedule": 30.0,
     },
 }
