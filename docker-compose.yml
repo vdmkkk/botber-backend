@@ -90,7 +90,10 @@ services:
   loki:
     image: grafana/loki:2.9.4
     container_name: obs_loki
-    command: -config.file=/etc/loki/config.yml
+    command: >
+      chown -R 10001:10001 /loki &&
+      exec /usr/bin/loki -config.file=/etc/loki/config.yml
+    entrypoint: ["/bin/sh", "-c"]
     volumes:
       - ./observability/loki-config.yml:/etc/loki/config.yml:ro
       - loki_data:/loki
