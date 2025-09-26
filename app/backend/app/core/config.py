@@ -62,6 +62,10 @@ class Settings(BaseSettings):
     BILLING_LOCK_TTL_SECONDS: int = 240       # Redis lock TTL (shorter than tick)
     BILLING_TIMEZONE: str = "UTC"             # optional: for aligning to next midnight etc.
 
+    SENTRY_DSN: str | None = 'https://8a66e06e153b1cc3a67bd72cc4597b93@o4510085101060096.ingest.de.sentry.io/4510085105516624'
+    ENV: str = "development"
+    GIT_SHA: str = "dev"
+
     # Which statuses are billable (external “active” only)
     BILLABLE_STATUSES: tuple[str, ...] = ("active",)
 
