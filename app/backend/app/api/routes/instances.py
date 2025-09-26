@@ -33,6 +33,7 @@ from app.core.exceptions import raise_error
 from app.core.error_codes import ErrorCode
 from sqlalchemy import select
 from app.models.enums import KBDataType, KBLangHint, KBEntryStatus
+from app.tasks.kb import poll_execution
 
 router = APIRouter(prefix="/instances", tags=["instances"])
 
@@ -325,7 +326,6 @@ async def set_instance_status(
 async def kb_add_entry(
     iid: int,
     payload: KBEntryCreate,
-    background: BackgroundTasks,
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -373,12 +373,7 @@ async def kb_add_entry(
     await db.commit()
     await db.refresh(entry)
 
-    # start watcher
-    if background is not None:
-        background.add_task(watch_kb_execution, entry.id)
-    else:
-        # fallback: still spawn a task
-        asyncio.create_task(watch_kb_execution(entry.id))
+    poll_execution.apply_async(kwargs={"entry_id": entry.id}, countdown=0)
 
     return entry
 

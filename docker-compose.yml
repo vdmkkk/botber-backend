@@ -48,5 +48,73 @@ services:
       uvicorn app.main:app --host 0.0.0.0 --port ${SERVICE_PORT:-8080} --proxy-headers
       "
 
+  celery_worker:
+    build:
+      context: ./app/backend
+      dockerfile: Dockerfile
+    container_name: app_celery_worker
+    env_file: [./app/backend/.env]
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    command: >
+      sh -c "alembic -c alembic.ini upgrade head &&
+             celery -A app.celery_app worker -l info -Q default,health,kb,billing --concurrency=4"
+
+  celery_beat:
+    build:
+      context: ./app/backend
+    container_name: app_celery_beat
+    env_file: [./app/backend/.env]
+    depends_on:
+      - celery_worker
+    command: celery -A app.celery_app beat -l info
+
+  flower:
+    image: mher/flower
+    container_name: app_flower
+    environment:
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL:-redis://app_redis:6379/0}
+      - FLOWER_PORT=5555
+    ports:
+      - "5555:5555"
+    depends_on:
+      - celery_worker
+
+  loki:
+    image: grafana/loki:2.9.4
+    container_name: obs_loki
+    command: -config.file=/etc/loki/config.yml
+    volumes:
+      - ./observability/loki-config.yml:/etc/loki/config.yml:ro
+      - loki_data:/loki
+    ports:
+      - "3110:3100"
+
+  promtail:
+    image: grafana/promtail:2.9.4
+    container_name: obs_promtail
+    volumes:
+      - ./observability/promtail-config.yml:/etc/promtail/config.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      - loki
+
+  grafana:
+    image: grafana/grafana:10.4.3
+    container_name: obs_grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PW:-admin}
+    volumes:
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3030:3000"
+    depends_on:
+      - loki
+
 volumes:
   pg_data:

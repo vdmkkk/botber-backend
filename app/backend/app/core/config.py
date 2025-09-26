@@ -65,4 +65,10 @@ class Settings(BaseSettings):
     # Which statuses are billable (external “active” only)
     BILLABLE_STATUSES: tuple[str, ...] = ("active",)
 
+    ENABLE_CELERY: bool = True  # if True, we turn off the old asyncio loops
+    CELERY_BROKER_URL: str = "redis://app_redis:6379/0"
+    CELERY_RESULT_BACKEND: str = "redis://app_redis:6379/1"
+    CELERY_TIMEZONE: str = "UTC"
+    CELERY_BEAT_ENABLED: bool = True
+
 settings = Settings()

@@ -19,9 +19,23 @@ import asyncio, contextlib
 from app.services.billing import process_due_instances
 from app.services.kb_watcher import rehydrate_pending_watchers
 
+import sentry_sdk
+from sentry_sdk.integrations.fastapi import FastApiIntegration
+from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
+from sentry_sdk.integrations.httpx import HttpxIntegration
+
 app = FastAPI(title="BotBeri API", version="0.1.0")
 
 stop_billing = asyncio.Event()
+
+if settings.SENTRY_DSN:
+    sentry_sdk.init(
+        dsn=settings.SENTRY_DSN,
+        integrations=[FastApiIntegration(), SqlalchemyIntegration(), HttpxIntegration()],
+        traces_sample_rate=0.2,
+        environment=settings.ENV,
+        release=settings.GIT_SHA,
+    )
 
 async def _billing_loop():
     try:
@@ -33,10 +47,6 @@ async def _billing_loop():
                 continue
     except asyncio.CancelledError:
         pass
-
-@app.on_event("startup")
-async def _start_billing():
-    app.state._billing_task = asyncio.create_task(_billing_loop())
 
 @app.on_event("shutdown")
 async def _stop_billing():
@@ -147,18 +157,26 @@ app.include_router(users.router)
 scheduler: AsyncIOScheduler | None = None
 
 @app.on_event("startup")
+async def _start_billing():
+    if not settings.ENABLE_CELERY:
+        app.state._billing_task = asyncio.create_task(_billing_loop())
+
+@app.on_event("startup")
 async def _start_kb_watchers():
-    asyncio.create_task(rehydrate_pending_watchers())
+    if not settings.ENABLE_CELERY:
+        asyncio.create_task(rehydrate_pending_watchers())
 
 @app.on_event("startup")
 async def on_startup():
     # daily billing at 03:10 UTC
-    global scheduler
-    scheduler = AsyncIOScheduler()
-    scheduler.add_job(_billing_job, CronTrigger(hour=3, minute=10, timezone="UTC"))
-    scheduler.start()
+    if not settings.ENABLE_CELERY:
+        global scheduler
+        scheduler = AsyncIOScheduler()
+        scheduler.add_job(_billing_job, CronTrigger(hour=3, minute=10, timezone="UTC"))
+        scheduler.start()
 
 async def _billing_job():
-    from app.services.billing import run_daily_billing
-    async with AsyncSessionLocal() as db:
-        await run_daily_billing(db)
+    if not settings.ENABLE_CELERY:
+        from app.services.billing import run_daily_billing
+        async with AsyncSessionLocal() as db:
+            await run_daily_billing(db)
