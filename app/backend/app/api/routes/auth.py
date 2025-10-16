@@ -211,7 +211,7 @@ async def forgot_password(data: ForgotPasswordIn, db: AsyncSession = Depends(get
     db.add(pr)
     await db.commit()
 
-    reset_url = f"{settings.FRONTEND_BASE_URL.rstrip('/')}/reset-password?token={token}"
+    reset_url = f"{settings.FRONTEND_BASE_URL.rstrip('/')}/reset-password/{token}"
     background.add_task(
         send_email,
         to_email=user.email,
