@@ -13,7 +13,9 @@ def scan_and_dispatch():
 
 async def _scan():
     async with AsyncSessionLocal() as db:
+        print("[health] scan: started")
         rows = (await db.execute(select(UserBotInstance.id, UserBotInstance.instance_id))).all()
+        print(f"[health] scan: found {len(rows)} instances")
         for iid, remote_id in rows:
             poll_instance.apply_async(kwargs={"iid": iid, "remote_id": remote_id})
 
@@ -27,8 +29,9 @@ async def _poll(iid: int, remote_id: str):
         if not inst:
             return
         try:
-            data = await ext_health(remote_id)  # -> {"status": "active"|"inactive"|...}
-            new_s = InstanceStatus(data.get("status", "unknown"))
+            data = await ext_health(remote_id)  # may be a string status or a dict with "status"
+            status_str = data.get("status", "unknown") if isinstance(data, dict) else str(data)
+            new_s = InstanceStatus(status_str)
         except Exception:
             new_s = InstanceStatus.unknown
 
@@ -37,3 +40,4 @@ async def _poll(iid: int, remote_id: str):
             inst.status = new_s
             db.add(InstanceStatusEvent(instance_id=iid, from_status=prev.value if prev else None, to_status=new_s.value))
         await db.commit()
+        print(f"[health] poll: iid={iid} remote={remote_id} -> {new_s.value}")

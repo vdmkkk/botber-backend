@@ -15,7 +15,7 @@ from app.api.routes import auth, bots, instances, admin, users
 from app.core.config import settings
 from app.db.session import AsyncSessionLocal
 
-import asyncio, contextlib
+import asyncio, contextlib, logging
 from app.services.billing import process_due_instances
 from app.services.kb_watcher import rehydrate_pending_watchers
 
@@ -27,6 +27,7 @@ from sentry_sdk.integrations.httpx import HttpxIntegration
 app = FastAPI(title="BotBeri API", version="0.1.0")
 
 stop_billing = asyncio.Event()
+logger = logging.getLogger(__name__)
 
 if settings.SENTRY_DSN:
     sentry_sdk.init(
@@ -186,5 +187,12 @@ async def _billing_job():
 async def _kickoff_health_scan():
     if settings.ENABLE_CELERY:
         from app.tasks.health import scan_and_dispatch
-        with contextlib.suppress(Exception):
-            scan_and_dispatch.delay()
+        # Retry a few times in case broker isn't ready exactly at startup
+        for attempt in range(1, 4):
+            try:
+                scan_and_dispatch.delay()
+                logger.info("Enqueued initial health scan on startup")
+                break
+            except Exception as e:
+                logger.warning("Health scan enqueue failed (attempt %s): %s", attempt, e)
+                await asyncio.sleep(5)
