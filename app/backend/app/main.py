@@ -180,3 +180,11 @@ async def _billing_job():
         from app.services.billing import run_daily_billing
         async with AsyncSessionLocal() as db:
             await run_daily_billing(db)
+
+# If Celery is enabled, kick off a health scan immediately on API startup
+@app.on_event("startup")
+async def _kickoff_health_scan():
+    if settings.ENABLE_CELERY:
+        from app.tasks.health import scan_and_dispatch
+        with contextlib.suppress(Exception):
+            scan_and_dispatch.delay()

@@ -44,14 +44,14 @@ celery_app.conf.task_routes = {
 celery_app.conf.beat_schedule = {
     "billing-tick": {
         "task": "app.tasks.billing.process_due",
-        "schedule": 300.0,
+        "schedule": float(settings.BILLING_TICK_SECONDS),
     },
     "health-scan": {
         "task": "app.tasks.health.scan_and_dispatch",
-        "schedule": 3600.0,
+        "schedule": float(settings.HEALTH_POLL_INTERVAL_SECONDS),
     },
     "kb-scan": {
         "task": "app.tasks.kb.scan_and_dispatch",
-        "schedule": 30.0,
+        "schedule": float(settings.KB_POLL_INTERVAL_SECONDS),
     },
 }
