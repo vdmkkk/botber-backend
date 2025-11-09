@@ -12,7 +12,9 @@ def _client(base: str, token: str | None) -> httpx.AsyncClient:
 async def ext_create_instance(*, activation_code: str, vars: dict) -> str:
     payload = {"name": activation_code, "vars": vars or {}}
     async with _client(settings.EXTERNAL_API_BASE_URL, settings.EXTERNAL_API_TOKEN) as c:
+        print('creating instance', payload)
         r = await c.post("/instances", json=payload)
+        print('create instance response', r.json())
         r.raise_for_status()
         return r.json()["id"]
 
