@@ -40,7 +40,9 @@ async def ext_deactivate_instance(instance_id: str) -> None:
 
 async def ext_health(instance_id: str) -> str:
     async with _client(settings.EXTERNAL_API_BASE_URL, settings.EXTERNAL_API_TOKEN) as c:
+        print('polling health for instance', instance_id)
         r = await c.get(f"/instances/{instance_id}/health")
+        print('health response', r.json())
         r.raise_for_status()
         return r.json()["status"]  # provisioning/active/inactive/updating/deleting/error/unknown
 
