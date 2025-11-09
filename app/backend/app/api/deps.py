@@ -28,5 +28,7 @@ async def get_current_user(
     return user
 
 def require_admin(x_admin_key: str | None = Header(default=None, alias="X-Admin-Key")):
+    print('x_admin_key', x_admin_key)
+    print('settings.ADMIN_API_KEY', settings.ADMIN_API_KEY)
     if not x_admin_key or x_admin_key != settings.ADMIN_API_KEY:
         raise_error(ErrorCode.ADMIN_TOKEN_INVALID, status.HTTP_401_UNAUTHORIZED, "Admin token invalid")
