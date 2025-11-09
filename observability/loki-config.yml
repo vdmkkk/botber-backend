@@ -18,3 +18,13 @@ schema_config:
         period: 24h
 query_range: { parallelise_shardable_queries: true }
 ruler: { storage: { type: local, local: { directory: /loki/rules } } }
+
+# Retention and compaction to prevent unbounded disk growth
+limits_config:
+  retention_period: 7d
+
+compactor:
+  working_directory: /loki/compactor
+  shared_store: filesystem
+  compaction_interval: 5m
+  retention_enabled: true

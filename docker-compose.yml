@@ -15,6 +15,11 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   redis:
     image: redis:7-alpine
@@ -27,6 +32,11 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   api:
     build:
@@ -47,6 +57,11 @@ services:
       alembic -c alembic.ini upgrade head &&
       uvicorn app.main:app --host 0.0.0.0 --port ${SERVICE_PORT:-8080} --proxy-headers
       "
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   celery_worker:
     build:
@@ -64,6 +79,11 @@ services:
     command: >
       sh -c "alembic -c alembic.ini upgrade head &&
              celery -A app.celery_app worker -l info -Q default,health,kb,billing --concurrency=4"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   celery_beat:
     build:
@@ -75,6 +95,11 @@ services:
     depends_on:
       - celery_worker
     command: celery -A app.celery_app beat -l info
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   flower:
     image: mher/flower
@@ -86,6 +111,11 @@ services:
       - "5555:5555"
     depends_on:
       - celery_worker
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   loki:
     image: grafana/loki:2.9.4
@@ -96,6 +126,11 @@ services:
       - loki_data:/loki
     ports:
       - "3110:3100"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   promtail:
     image: grafana/promtail:2.9.4
@@ -107,6 +142,11 @@ services:
     command: -config.file=/etc/promtail/config.yml
     depends_on:
       - loki
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   grafana:
     image: grafana/grafana:10.4.3
@@ -119,6 +159,11 @@ services:
       - "3030:3000"
     depends_on:
       - loki
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   pg_data:
