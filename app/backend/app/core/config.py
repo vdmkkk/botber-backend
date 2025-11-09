@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     ENV: str = "dev"
     SERVICE_PORT: int = 8080
 
-    ADMIN_API_KEY: str
+    ADMIN_API_KEY: str = 'DAWUydv8i2ud2qjdBadad'
 
     PG_HOST: str
     PG_PORT: int
