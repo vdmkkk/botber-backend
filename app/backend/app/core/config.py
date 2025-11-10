@@ -15,8 +15,8 @@ class Settings(BaseSettings):
     PG_USER: str
     PG_PASSWORD: str
 
-    REDIS_HOST: str
-    REDIS_PORT: int
+    REDIS_HOST: str = "app_redis"
+    REDIS_PORT: int = 6379
     REDIS_DB: int = 0
 
     JWT_SECRET: str
