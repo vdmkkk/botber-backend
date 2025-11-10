@@ -1,4 +1,6 @@
 from typing import Optional
+import logging
+from redis.exceptions import RedisError, ReadOnlyError
 from app.core.redis import redis_client
 
 async def cooldown_key(prefix: str, key: str) -> str:
@@ -21,15 +23,23 @@ def _block_key(email: str) -> str:
 async def incr_failure(email: str, window_seconds: int) -> int:
     r = redis_client()
     key = _fail_key(email)
-    # increment and ensure TTL set (only when first created)
-    count = await r.incr(key)
-    if count == 1:
-        await r.expire(key, window_seconds)
-    return count
+    try:
+        # increment and ensure TTL set (only when first created)
+        count = await r.incr(key)
+        if count == 1:
+            await r.expire(key, window_seconds)
+        return count
+    except (ReadOnlyError, RedisError, Exception) as exc:
+        logging.getLogger(__name__).warning("incr_failure failed for %s: %s", email, exc)
+        # Degrade gracefully: don't crash auth flow; treat as first failure
+        return 1
 
 async def reset_failures(email: str) -> None:
     r = redis_client()
-    await r.delete(_fail_key(email))
+    try:
+        await r.delete(_fail_key(email))
+    except (ReadOnlyError, RedisError, Exception) as exc:
+        logging.getLogger(__name__).warning("reset_failures failed for %s: %s", email, exc)
 
 async def is_blocked(email: str) -> bool:
     r = redis_client()
@@ -37,7 +47,10 @@ async def is_blocked(email: str) -> bool:
 
 async def set_block(email: str, block_seconds: int) -> None:
     r = redis_client()
-    await r.set(_block_key(email), "1", ex=block_seconds)
+    try:
+        await r.set(_block_key(email), "1", ex=block_seconds)
+    except (ReadOnlyError, RedisError, Exception) as exc:
+        logging.getLogger(__name__).warning("set_block failed for %s: %s", email, exc)
 
 async def block_ttl(email: str) -> Optional[int]:
     r = redis_client()
